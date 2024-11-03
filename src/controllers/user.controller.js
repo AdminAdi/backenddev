@@ -2,75 +2,60 @@
 import { asynchandler } from '../utils/asynchandler.js';
 import { Apierror } from '../utils/Apierror.js';
 import { User } from '../models/user.model.js';
-import {uploadOnCloudinary} from '../utils/cloudinary.js'
+import { uploadOnCloudinary } from '../utils/cloudinary.js';
 import { Apiresponse } from '../utils/Apiresponse.js';
-
-const app = express();
 
 // Define the registerUser function
 const registerUser = asynchandler(async (req, res) => {
-    // get the user details from the frontend 
-    //validation - not empty 
-    //check if user already exist - username , email 
-    //check for images,check for avatar
-    //upload them to cloudinary, avatar 
-    //create user object - create entry in db 
-    //remove password and refresh token field 
-    //send back the user object
-    //check for user creation
-    //return res
-    const { fullname, email, username, password } = req.body
-    console.log(email)
-
-    if(
-        [fullname, email, username, password].some((field) => field?.trim() === '')
-    ){
-       throw new Apierror(400, 'Please fill in all fields')
-       
-        
-    }
-
-    const existeduser = User.findOne({$or:[{email},{username}]})
+    // Get the user details from the frontend
+    const { fullname, email, username, password } = req.body;
     
-    if(existeduser){
-        throw new Apierror(400, 'User already exists')
+    // Validation - not empty
+    if ([fullname, email, username, password].some((field) => field?.trim() === '')) {
+        throw new Apierror(400, 'Please fill in all fields');
     }
 
+    // Check if user already exists - username or email
+    const existedUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existedUser) {
+        throw new Apierror(400, 'User already exists');
+    }
+
+    // Check for images, check for avatar
     const avatarLocalPath = req.files?.avatar[0]?.path;
     const coverImageLocalPath = req.files?.coverImage[0]?.path;
 
-    if(!avatarLocalPath){
-        throw new Apierror(400, 'Please provide an avatar')
+    if (!avatarLocalPath) {
+        throw new Apierror(400, 'Please provide an avatar');
     }
 
-    const avatar = await uploadOnCloudinary(avatarLocalPath)
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
+    // Upload images to Cloudinary
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    const coverImage = coverImageLocalPath ? await uploadOnCloudinary(coverImageLocalPath) : null;
 
-    if(!avatar || !coverImage){
-        throw new Apierror(500, 'Image upload failed')
+    if (!avatar) {
+        throw new Apierror(500, 'Image upload failed');
     }
 
-    User.create({
+    // Create user object and save entry in DB
+    const newUser = await User.create({
         fullname,
         email,
         username: username.toLowerCase(),
-        password,
+        password, // Ensure password is hashed before saving in real applications
         avatar: avatar.url,
-        coverImage: coverImage?.url ||""
-    })
+        coverImage: coverImage?.url || ""
+    });
 
-    const awaitedUser = await User.findById(username._id).select('-password -refreshToken')
-
-    if(!awaitedUser){
-        throw new Apierror(500, 'User creation failed')
+    // Ensure the user was created successfully
+    if (!newUser) {
+        throw new Apierror(500, 'User creation failed');
     }
 
-    res.status(201).json(new Apiresponse(201, awaitedUser))
-
-})
-
-// Use asynchandler if required
-app.post('/api/v1/user/register', asynchandler(registerUser));
+    // Send back the user object (excluding sensitive information)
+    const awaitedUser = await User.findById(newUser._id).select('-password -refreshToken');
+    res.status(201).json(new Apiresponse(201, awaitedUser));
+});
 
 // Export the registerUser function
 export { registerUser };
