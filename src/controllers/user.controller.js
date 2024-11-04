@@ -4,6 +4,7 @@ import { Apierror } from '../utils/Apierror.js';
 import { User } from '../models/user.model.js';
 import { uploadOnCloudinary } from '../utils/cloudinary.js'
 import { Apiresponse } from '../utils/Apiresponse.js';
+import jwt from 'jsonwebtoken';
 
 const generateAccessAndRefreshToken = async(userId) => {
     try {
@@ -151,6 +152,45 @@ const logutUser = asynchandler(async (req, res) => {
         
 }) 
 
+const refreshAccessToken = asynchandler(async (req, res) => {
+   const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken 
+
+    if (!incomingRefreshToken) {
+         throw new Apierror(401, 'Please login')
+    }
+
+try {
+        const decodedToken = jwt.verify(
+            incomingRefreshToken,
+            process.env.REFRESH_TOKEN_SECRET
+        )
+        const user = User.findById(decodedToken?._id)
+        if (!user) {
+            throw new Apierror(401, 'Please login')
+        }
+    
+        if (user.refreshToken !== incomingRefreshToken) {
+            throw new Apierror(401, 'Invalid refresh token')
+        }
+    
+        const options = {
+            httpOnly: true,
+            secure: true
+        }
+    
+        const { accessToken,refreshToken } = await generateAccessAndRefreshToken(user._id)
+    
+        return res
+        .status(200)
+        .cookie('accessToken', accessToken, options)
+        .cookie('refreshToken', refreshToken, options)
+        .json(new Apiresponse(200, 'Token refreshed successfully'))
+} catch (error) {
+    throw new Apierror(401, 'Please login')
+    
+}
+})
+
 // Use asynchandler if required
 app.post('/api/v1/user/register', asynchandler(registerUser));
 
@@ -158,7 +198,8 @@ app.post('/api/v1/user/register', asynchandler(registerUser));
 export {
     registerUser,
     loginUser,
-    logutUser
+    logutUser,
+    refreshAccessToken
 
 
 };
