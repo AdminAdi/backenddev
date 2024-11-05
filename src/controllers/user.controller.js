@@ -191,6 +191,59 @@ try {
 }
 })
 
+
+const changeCurrentPassword =  asynchandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body
+
+    const user = await User.findById(req.user?._id)
+    const isPasswordCorrect = await user.isPasswordCorrect(currentPassword)
+
+    if (!isPasswordCorrect) {
+        throw new Apierror(401, 'Invalid password')
+    }
+
+    user.password = newPassword
+    await user.save({ validateBeforeSave: false })
+    return res.status(200).json(new Apiresponse(200, 'Password changed successfully'))
+})
+
+const getCurrentUser = asynchandler(async (req, res) => {
+    return res.status(200).json(new Apiresponse(200, req.user,"current user fetched successfully"))})
+
+    
+const updateAccountDetails = asynchandler(async (req, res) => {
+    const { fullname, email, username } = req.body
+    if (!fullname || !email || !username) {
+        throw new Apierror(400, 'Please fill in all fields')
+    }
+    
+    const user = User.findByIdAndUpdate(req.user?._id, {$set: fullname, email, username }, { new: true })
+    .select('-password ')
+    return res.status(200)
+    .json(new Apiresponse(200, user, 'Account details updated successfully'))
+
+
+    })
+
+const updateUserAvatar = asynchandler(async (req, res) => {
+    const avatarLocalPath = req.files?.avatar[0]?.path
+    if (!avatarLocalPath) {
+        throw new Apierror(400, 'Please provide an avatar')
+    }
+
+    const avatar = await uploadOnCloudinary(avatarLocalPath)
+    if (!avatar) {
+        throw new Apierror(500, 'Image upload failed')
+    }
+
+    const user = User.findByIdAndUpdate(req.user?._id, { $set: { avatar: avatar.url } }, { new: true })
+    .select('-password')
+    return res.status(200)
+    .json(new Apiresponse(200, user, 'Avatar updated successfully'))
+
+})  
+
+
 // Use asynchandler if required
 app.post('/api/v1/user/register', asynchandler(registerUser));
 
@@ -199,7 +252,11 @@ export {
     registerUser,
     loginUser,
     logutUser,
-    refreshAccessToken
+    refreshAccessToken,
+    changeCurrentPassword,
+    getCurrentUser,
+    updateAccountDetails,
+    updateUserAvatar
 
 
 };
